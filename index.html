@@ -14,7 +14,7 @@
     .container{ max-width:720px; margin:0 auto; padding:16px; }
     h1{ text-align:center; color:#2a26a8; text-shadow:0 2px 2px #03173222; margin:10px 0 14px; letter-spacing:.5px; }
 
-    /* NUEVO: resumen de seleccionados */
+    /* Resumen de N° seleccionados (estilo del botón PAGO, más corto) */
     .summary-wrap{
       display:flex; flex-direction:column; align-items:center; justify-content:center;
       gap:6px; margin:6px 0 12px;
@@ -53,7 +53,7 @@
     /* Loader overlay con spin */
     .loader{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.35); z-index:9999; }
     .loader.active{ display:flex; }
-    .spinner{ width:60px; height:60px; border-radius:50%; border:6px solid #fff; border-top-color:var(--primary); animation:spin 1s linear infinite; }
+    .spinner{ width:60px; height:60px; border-radius:50%; border:6px solid:#fff; border-top-color:var(--primary); animation:spin 1s linear infinite; }
     @keyframes spin{ to{ transform:rotate(360deg); } }
     @media (max-width:420px){ .status-btn,.liberar-btn{ min-width:120px; padding:10px 12px; } .wa{ width:38px; height:38px; } }
   </style>
@@ -63,7 +63,7 @@
   <div class="container">
     <h1>BALANCE RIFA</h1>
 
-    <!-- NUEVO: resumen de números seleccionados -->
+    <!-- Resumen: muestra la cantidad total de números seleccionados (suma por fila) -->
     <div class="summary-wrap" aria-live="polite">
       <div id="selectedBox" class="selected-badge" style="display:none"></div>
       <div id="selectedCaption" class="summary-caption" style="display:none">N° Seleccionados</div>
@@ -81,7 +81,7 @@
     // Separador visual
     const SEPARATOR = ', ';
 
-    // Sonidos (como en tu referencia)
+    // Sonidos
     const SOUNDS = {
       question: 'https://res.cloudinary.com/dqqeavica/video/upload/v1759011577/Pay_fail_ls2aif.mp3',
       info:     'https://res.cloudinary.com/dqqeavica/video/upload/v1759011578/Default_notification_pkp4wr.mp3',
@@ -91,7 +91,7 @@
     };
     function play(url){ try{ new Audio(url).play().catch(()=>{}); }catch(_){} }
 
-    // Patch SweetAlert2 para disparar sonido según icono
+    // Patch SweetAlert2 para sonido según icono
     if (window.Swal && typeof Swal.fire === 'function'){
       const __fire = Swal.fire.bind(Swal);
       Swal.fire = function(options = {}, ...rest){
@@ -103,7 +103,7 @@
       }
     }
 
-    // Loader con “smart delay” (evita parpadeos)
+    // Loader con “smart delay”
     const $loader = document.getElementById('loader');
     let loadingCount = 0, loaderTimer = null;
     function startLoading(){
@@ -147,14 +147,13 @@
     // Datos y UI
     const $list = document.getElementById('list');
     const $save = document.getElementById('save');
-    // NUEVO: elementos del resumen
     const $selectedBox = document.getElementById('selectedBox');
     const $selectedCaption = document.getElementById('selectedCaption');
 
     let DATA = [];
-    const PENDING = new Map(); // row -> 'PAGO'|'PENDIENTE'
+    const PENDING = new Map(); // row -> 'PAGO'|'PENDIENTE' (se mantiene; no afecta el resumen)
 
-    // Conversión emojis 0️⃣..9️⃣ a dígitos y tokenización por número completo
+    // Conversión emojis 0️⃣..9️⃣ a dígitos y tokenización
     function normalizeKeycapDigits(s){
       if(!s) return '';
       const map = {'0️⃣':'0','1️⃣':'1','2️⃣':'2','3️⃣':'3','4️⃣':'4','5️⃣':'5','6️⃣':'6','7️⃣':'7','8️⃣':'8','9️⃣':'9'};
@@ -169,25 +168,22 @@
       return plain.split(/[^0-9]+/).filter(Boolean); // ["13","15"]
     }
 
-    // NUEVO: actualiza el recuadro con los números de filas con cambios pendientes
+    // Resumen: suma de la cantidad de números por cada fila (todas las filas cargadas)
     function updateSelectedSummary(){
-      const rows = Array.from(PENDING.keys());
-      if(rows.length === 0){
+      if(!Array.isArray(DATA) || DATA.length === 0){
         $selectedBox.style.display = 'none';
         $selectedCaption.style.display = 'none';
         $selectedBox.textContent = '';
         return;
       }
-      const byRow = new Map(DATA.map(it => [it.row, it]));
-      const nums = [];
-      for(const r of rows){
-        const it = byRow.get(r);
-        if(it) nums.push(...parseNumbersFromCell(it.numeros));
+      let total = 0;
+      for(const it of DATA){
+        total += parseNumbersFromCell(it.numeros).length;
       }
-      // sin duplicados, manteniendo orden
-      const seen = new Set(), uniq = [];
-      for(const n of nums){ if(!seen.has(n)){ seen.add(n); uniq.push(n); } }
-      $selectedBox.textContent = uniq.join(SEPARATOR) || '—';
+      // Si prefieres contar únicos:
+      // const set = new Set(); for(const it of DATA){ for(const n of parseNumbersFromCell(it.numeros)) set.add(n); } const total = set.size;
+
+      $selectedBox.textContent = String(total);
       $selectedBox.style.display = 'inline-block';
       $selectedCaption.style.display = 'block';
     }
@@ -246,7 +242,7 @@
         const newEstado = (!isPaid ? 'PAGO' : 'PENDIENTE');
         PENDING.set(item.row, newEstado);
         $save.disabled = PENDING.size === 0;
-        updateSelectedSummary(); // NUEVO
+        // No actualizamos el resumen aquí porque la cantidad total no cambia con el estado.
         play(SOUNDS.info);
       });
 
@@ -254,42 +250,42 @@
       btnLiberar.className = 'liberar-btn';
       btnLiberar.textContent = 'LIBERAR';
       btnLiberar.addEventListener('click', async () => {
-  const numsList = parseNumbersFromCell(item.numeros).join(SEPARATOR); // ej: "13, 15"
-  const nombre = item.nombre || '—';
+        const numsList = parseNumbersFromCell(item.numeros).join(SEPARATOR);
+        const nombre = item.nombre || '—';
 
-  const rs = await Swal.fire({
-    icon: 'question',
-    title: '¿Liberar números?',
-    html: `
-      <div style="text-align:left;line-height:1.4;">
-        <div style="margin-bottom:6px;"><b>${nombre}</b></div>
-        <div>Se liberarán: <b>${numsList || '(sin números)'}</b></div>
-        <div style="margin-top:6px;">Se eliminará este registro.</div>
-      </div>
-    `,
-    showCancelButton: true,
-    confirmButtonText: 'Sí, liberar',
-    cancelButtonText: 'Cancelar',
-    confirmButtonColor: '#16a34a',
-    cancelButtonColor: '#dc2626',
-    focusCancel: true
-  });
-  if(!rs.isConfirmed) return;
+        const rs = await Swal.fire({
+          icon: 'question',
+          title: '¿Liberar números?',
+          html: `
+            <div style="text-align:left;line-height:1.4;">
+              <div style="margin-bottom:6px;"><b>${nombre}</b></div>
+              <div>Se liberarán: <b>${numsList || '(sin números)'}</b></div>
+              <div style="margin-top:6px;">Se eliminará este registro.</div>
+            </div>
+          `,
+          showCancelButton: true,
+          confirmButtonText: 'Sí, liberar',
+          cancelButtonText: 'Cancelar',
+          confirmButtonColor: '#16a34a',
+          cancelButtonColor: '#dc2626',
+          focusCancel: true
+        });
+        if(!rs.isConfirmed) return;
 
-  try{
-    await apiPost('liberar', { row: item.row });
-    await Swal.fire({
-      icon:'success',
-      title:'Liberado',
-      text:'Números marcados como DISPONIBLE y registro eliminado.',
-      timer:1600,
-      showConfirmButton:false
-    });
-    await load();
-  }catch(e){
-    Swal.fire({ icon:'error', title:'No se pudo liberar', text: e.message || 'Error desconocido' });
-  }
-});
+        try{
+          await apiPost('liberar', { row: item.row });
+          await Swal.fire({
+            icon:'success',
+            title:'Liberado',
+            text:'Números marcados como DISPONIBLE y registro eliminado.',
+            timer:1600,
+            showConfirmButton:false
+          });
+          await load(); // updateSelectedSummary() será llamado dentro de load()
+        }catch(e){
+          Swal.fire({ icon:'error', title:'No se pudo liberar', text: e.message || 'Error desconocido' });
+        }
+      });
 
       const wa = document.createElement('a');
       wa.className = 'wa';
@@ -334,7 +330,7 @@
         PENDING.clear();
         $save.disabled = true;
         render(DATA);
-        updateSelectedSummary(); // NUEVO (limpia el resumen al cargar)
+        updateSelectedSummary(); // calcula y muestra la cantidad total
       }catch(e){
         Swal.fire({ icon:'error', title:'Error al cargar', text:e.message });
       }
@@ -349,8 +345,7 @@
         await Swal.fire({ icon:'success', title:'Cambios guardados', timer:1400, showConfirmButton:false });
         PENDING.clear();
         $save.disabled = true;
-        updateSelectedSummary(); // NUEVO (limpia tras guardar)
-        await load();
+        await load(); // actualiza lista y la cantidad total
       }catch(e){
         Swal.fire({ icon:'error', title:'No se pudo guardar', text:e.message });
       }
