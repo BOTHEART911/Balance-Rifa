@@ -26,12 +26,17 @@
     .row{ display:flex; justify-content:space-between; gap:10px; align-items:flex-start; margin-bottom:6px; }
     .name{ font-weight:900; font-size:1.15rem; color:#1b2a6b; }
     .datetime{ color:#444; font-weight:700; white-space:nowrap; font-size:.9rem; }
-    .nums{ display:flex; flex-wrap:wrap; gap:6px; margin:4px 0 10px; }
+
+    .nums{ display:flex; flex-wrap:wrap; align-items:center; gap:0; margin:4px 0 10px; }
     .num-chip{
       display:inline-flex; align-items:center; justify-content:center;
       background:var(--chip); color:#fff; min-width:26px; height:26px; padding:0 8px;
       border-radius:6px; border:2px solid #0a53be; font-weight:800; box-shadow:0 2px 6px rgba(0,0,0,.12);
     }
+    .num-sep{
+      display:inline-block; margin:0 6px; color:#2a26a8; font-weight:900; user-select:none;
+    }
+
     .actions{ display:flex; gap:10px; align-items:center; margin-top:4px; }
     .status-btn{
       border-radius:999px; padding:10px 18px; font-weight:900; cursor:pointer; min-width:150px;
@@ -41,6 +46,7 @@
     .status-pending::before{ content:"PENDIENTE"; }
     .status-paid{ border-color:#7adf9b; color:#0a0; background:#d7f8e3; }
     .status-paid::before{ content:"PAGO"; }
+
     .liberar-btn{
       border-radius:999px; padding:10px 18px; font-weight:900; cursor:pointer; min-width:150px;
       background:#fff; color:#111; border:3px solid #111; box-shadow:0 4px 10px rgba(0,0,0,.12);
@@ -51,6 +57,7 @@
       box-shadow:0 6px 12px rgba(0,0,0,.18);
     }
     .wa img{ width:28px; height:28px; object-fit:contain; border-radius:6px; background:#fff; }
+
     .save-wrap{ display:flex; justify-content:center; margin:12px 0 30px; }
     .save-btn{
       border-radius:999px; padding:12px 20px; font-weight:900; cursor:pointer; min-width:220px;
@@ -77,10 +84,12 @@
   </div>
 
   <script>
-    // URL de la propia Web App (inyectada desde Apps Script)
+    // URL de tu implementación (GET/POST)
     const API_BASE = 'https://script.google.com/macros/s/AKfycbyG9uHwWUzawyQ7p4vXQwtcq8D72WUhGwSGersAoydj5x_TSBkhpCKqStMBkqPduZpF/exec';
 
-    // Sonidos (mismos de tu referencia)
+    // Separador visual entre números: usa ', ' o ' - '
+    const SEPARATOR = ', ';
+
     const SOUNDS = {
       info:    'https://res.cloudinary.com/dqqeavica/video/upload/v1759011578/Default_notification_pkp4wr.mp3',
       success: 'https://res.cloudinary.com/dqqeavica/video/upload/v1759011577/Pay_success_t5aawh.mp3',
@@ -88,7 +97,6 @@
     };
     function play(u){ try{ new Audio(u).play().catch(()=>{}); }catch(_){} }
 
-    // API helpers (GET/POST contra ?action=...)
     const $loader = document.getElementById('loader');
     function setLoading(v){ $loader.classList.toggle('active', !!v); }
 
@@ -114,7 +122,6 @@
       } finally { setLoading(false); }
     }
 
-    // UI
     const $list = document.getElementById('list');
     const $save = document.getElementById('save');
     let DATA = [];
@@ -123,18 +130,26 @@
     function chipify(numerosRaw){
       const tokens = String(numerosRaw || '').match(/\d+/g) || [];
       const frag = document.createDocumentFragment();
-      for(const t of tokens){
+      tokens.forEach((t, i) => {
         const s = document.createElement('span');
         s.className = 'num-chip';
         s.textContent = t;
         frag.appendChild(s);
-      }
+        if(i < tokens.length - 1){
+          const sep = document.createElement('span');
+          sep.className = 'num-sep';
+          sep.textContent = SEPARATOR;
+          frag.appendChild(sep);
+        }
+      });
       return frag;
     }
+
     function statusClass(estado){
       const e = String(estado || '').trim().toUpperCase();
       return (e === 'PAGO' || e === 'PAGÓ' || e === 'PAGADO') ? 'status-paid' : 'status-pending';
     }
+
     function createCard(item){
       const card = document.createElement('div');
       card.className = 'card';
@@ -178,7 +193,7 @@
         try{
           await apiPost('liberar', { row: item.row });
           play(SOUNDS.success);
-          await load(); // recargar
+          await load();
         }catch(e){
           alert('No se pudo liberar: ' + e.message);
           play(SOUNDS.error);
@@ -209,6 +224,7 @@
       card.appendChild(acts);
       return card;
     }
+
     function render(list){
       $list.innerHTML = '';
       if(!list?.length){
@@ -220,6 +236,7 @@
       }
       for(const it of list) $list.appendChild(createCard(it));
     }
+
     async function load(){
       try{
         DATA = await apiGet('listcomprados');
@@ -231,6 +248,7 @@
         play(SOUNDS.error);
       }
     }
+
     document.getElementById('save').addEventListener('click', async ()=>{
       if(PENDING.size===0) return;
       const cambios = [];
