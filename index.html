@@ -4,6 +4,10 @@
   <meta charset="utf-8">
   <title>BALANCE RIFA</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- SweetAlert2 -->
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
   <style>
     :root{ --primary:#3f37c9; --ok:#16a34a; --error:#dc2626; --chip:#0b5ed7; }
     html,body{ margin:0; padding:0; background:#f4f5fb; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; color:#111; }
@@ -28,6 +32,7 @@
     .save-wrap{ display:flex; justify-content:center; margin:12px 0 30px; }
     .save-btn{ border-radius:999px; padding:12px 20px; font-weight:900; cursor:pointer; min-width:220px; background:#fff; color:#111; border:3px solid #111; box-shadow:0 10px 20px rgba(0,0,0,.14); }
     .save-btn[disabled]{ opacity:.55; cursor:not-allowed; }
+    /* Loader overlay con spin */
     .loader{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.35); z-index:9999; }
     .loader.active{ display:flex; }
     .spinner{ width:60px; height:60px; border-radius:50%; border:6px solid #fff; border-top-color:var(--primary); animation:spin 1s linear infinite; }
@@ -46,24 +51,54 @@
   </div>
 
   <script>
-    // Tu endpoint de implementación
+    // Endpoint de tu implementación (GET/POST)
     const API_BASE = 'https://script.google.com/macros/s/AKfycbyG9uHwWUzawyQ7p4vXQwtcq8D72WUhGwSGersAoydj5x_TSBkhpCKqStMBkqPduZpF/exec';
+    // Separador visual
+    const SEPARATOR = ', ';
 
-    // Separador visual entre números (no afecta el backend)
-    const SEPARATOR = ', '; // o ' - '
-
+    // Sonidos (como en tu referencia)
     const SOUNDS = {
-      info:    'https://res.cloudinary.com/dqqeavica/video/upload/v1759011578/Default_notification_pkp4wr.mp3',
-      success: 'https://res.cloudinary.com/dqqeavica/video/upload/v1759011577/Pay_success_t5aawh.mp3',
-      error:   'https://res.cloudinary.com/dqqeavica/video/upload/v1759011578/Low_battery_d5qua1.mp3',
+      question: 'https://res.cloudinary.com/dqqeavica/video/upload/v1759011577/Pay_fail_ls2aif.mp3',
+      info:     'https://res.cloudinary.com/dqqeavica/video/upload/v1759011578/Default_notification_pkp4wr.mp3',
+      success:  'https://res.cloudinary.com/dqqeavica/video/upload/v1759011577/Pay_success_t5aawh.mp3',
+      error:    'https://res.cloudinary.com/dqqeavica/video/upload/v1759011578/Low_battery_d5qua1.mp3',
+      warning:  'https://res.cloudinary.com/dqqeavica/video/upload/v1759011578/Low_battery_d5qua1.mp3'
     };
-    function play(u){ try{ new Audio(u).play().catch(()=>{}); }catch(_){} }
+    function play(url){ try{ new Audio(url).play().catch(()=>{}); }catch(_){} }
 
+    // Patch SweetAlert2 para disparar sonido según icono
+    if (window.Swal && typeof Swal.fire === 'function'){
+      const __fire = Swal.fire.bind(Swal);
+      Swal.fire = function(options = {}, ...rest){
+        try{
+          const icon = options.icon || options.type;
+          if (icon && SOUNDS[icon]) play(SOUNDS[icon]);
+        }catch(e){}
+        return __fire(options, ...rest);
+      }
+    }
+
+    // Loader con “smart delay” (evita parpadeos)
     const $loader = document.getElementById('loader');
-    function setLoading(v){ $loader.classList.toggle('active', !!v); }
+    let loadingCount = 0, loaderTimer = null;
+    function startLoading(){
+      loadingCount++;
+      if(loadingCount === 1){
+        loaderTimer = setTimeout(()=>{ $loader.classList.add('active'); loaderTimer=null; }, 120);
+      }
+    }
+    function stopLoading(){
+      if(loadingCount === 0) return;
+      loadingCount--;
+      if(loadingCount === 0){
+        if(loaderTimer){ clearTimeout(loaderTimer); loaderTimer=null; }
+        $loader.classList.remove('active');
+      }
+    }
 
+    // API helpers
     async function apiGet(action, params = {}){
-      setLoading(true);
+      startLoading();
       try{
         const url = new URL(API_BASE);
         url.search = new URLSearchParams({ action, ...params }).toString();
@@ -71,46 +106,38 @@
         const j = await r.json();
         if(!j.ok) throw new Error(j.error || 'Error');
         return j.data;
-      } finally { setLoading(false); }
+      } finally { stopLoading(); }
     }
     async function apiPost(action, body = {}){
-      setLoading(true);
+      startLoading();
       try{
         const url = API_BASE + '?action=' + encodeURIComponent(action);
         const r = await fetch(url, { method:'POST', headers:{ 'Content-Type':'text/plain;charset=utf-8', 'Accept':'application/json' }, body: JSON.stringify(body) });
         const j = await r.json();
         if(!j.ok) throw new Error(j.error || 'Error');
         return j.data;
-      } finally { setLoading(false); }
+      } finally { stopLoading(); }
     }
 
+    // Datos y UI
     const $list = document.getElementById('list');
     const $save = document.getElementById('save');
     let DATA = [];
     const PENDING = new Map(); // row -> 'PAGO'|'PENDIENTE'
 
-    // --- Conversión de emojis de dígitos a números completos ---
-    // Mapea 0️⃣..9️⃣ a 0..9 y mantiene dígitos ASCII.
+    // Conversión emojis 0️⃣..9️⃣ a dígitos y tokenización por número completo
     function normalizeKeycapDigits(s){
       if(!s) return '';
-      const map = {
-        '0️⃣':'0','1️⃣':'1','2️⃣':'2','3️⃣':'3','4️⃣':'4',
-        '5️⃣':'5','6️⃣':'6','7️⃣':'7','8️⃣':'8','9️⃣':'9'
-      };
-      // Reemplazo directo por claves visibles (maneja la secuencia U+0031 U+FE0F U+20E3)
+      const map = {'0️⃣':'0','1️⃣':'1','2️⃣':'2','3️⃣':'3','4️⃣':'4','5️⃣':'5','6️⃣':'6','7️⃣':'7','8️⃣':'8','9️⃣':'9'};
       let out = String(s);
       for(const k in map){ out = out.split(k).join(map[k]); }
-      // Además, por compatibilidad: convierte 1\uFE0F\u20E3 -> 1
+      // fallback 1\uFE0F\u20E3
       out = out.replace(/([0-9])\uFE0F\u20E3/g, '$1');
       return out;
     }
     function parseNumbersFromCell(raw){
-      // 1) Normaliza emojis a dígitos
       const plain = normalizeKeycapDigits(String(raw||''));
-      // 2) Sustituye todo lo que NO sea dígito por separador
-      // Deja juntos los dígitos contiguos (13, 115, etc.)
-      const tokens = plain.split(/[^0-9]+/).filter(Boolean);
-      return tokens; // ['13','15'] para "1️⃣3️⃣, 1️⃣5️⃣"
+      return plain.split(/[^0-9]+/).filter(Boolean); // ["13","15"]
     }
 
     function chipify(numerosRaw){
@@ -174,15 +201,26 @@
       btnLiberar.className = 'liberar-btn';
       btnLiberar.textContent = 'LIBERAR';
       btnLiberar.addEventListener('click', async () => {
-        const ok = confirm(`¿Liberar los números de "${item.nombre||''}" y borrar este registro?\n\nSe marcarán como DISPONIBLE en "NUMEROS" y se eliminará la fila en "COMPRADOS".`);
-        if(!ok) return;
+        const numsList = parseNumbersFromCell(item.numeros).join(SEPARATOR);
+        const rs = await Swal.fire({
+          icon: 'question',
+          title: '¿Liberar números?',
+          html: `Se liberarán: <b>${numsList || '(sin números)'}</b><br>y se eliminará este registro.`,
+          showCancelButton: true,
+          confirmButtonText: 'Sí, liberar',
+          cancelButtonText: 'Cancelar',
+          confirmButtonColor: '#16a34a',
+          cancelButtonColor: '#dc2626',
+          focusCancel: true
+        });
+        if(!rs.isConfirmed) return;
+
         try{
           await apiPost('liberar', { row: item.row });
-          play(SOUNDS.success);
+          await Swal.fire({ icon:'success', title:'Liberado', text:'Números marcados como DISPONIBLE y registro eliminado.', timer:1600, showConfirmButton:false });
           await load();
         }catch(e){
-          alert('No se pudo liberar: ' + e.message);
-          play(SOUNDS.error);
+          Swal.fire({ icon:'error', title:'No se pudo liberar', text: e.message || 'Error desconocido' });
         }
       });
 
@@ -230,8 +268,7 @@
         $save.disabled = true;
         render(DATA);
       }catch(e){
-        alert('Error al cargar: ' + e.message);
-        play(SOUNDS.error);
+        Swal.fire({ icon:'error', title:'Error al cargar', text:e.message });
       }
     }
 
@@ -241,13 +278,12 @@
       for(const [row, estado] of PENDING.entries()) cambios.push({row, estado: String(estado||'').toUpperCase()});
       try{
         await apiPost('guardarEstados', { cambios });
-        play(SOUNDS.success);
+        await Swal.fire({ icon:'success', title:'Cambios guardados', timer:1400, showConfirmButton:false });
         PENDING.clear();
         $save.disabled = true;
         await load();
       }catch(e){
-        alert('No se pudo guardar: ' + e.message);
-        play(SOUNDS.error);
+        Swal.fire({ icon:'error', title:'No se pudo guardar', text:e.message });
       }
     });
 
