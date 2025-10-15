@@ -53,7 +53,7 @@
     /* Loader overlay con spin */
     .loader{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.35); z-index:9999; }
     .loader.active{ display:flex; }
-    .spinner{ width:60px; height:60px; border-radius:50%; border:6px solid:#fff; border-top-color:var(--primary); animation:spin 1s linear infinite; }
+    .spinner{ width:60px; height:60px; border-radius:50%; border:6px solid #fff; border-top-color:var(--primary); animation:spin 1s linear infinite; }
     @keyframes spin{ to{ transform:rotate(360deg); } }
     @media (max-width:420px){ .status-btn,.liberar-btn{ min-width:120px; padding:10px 12px; } .wa{ width:38px; height:38px; } }
   </style>
@@ -63,7 +63,7 @@
   <div class="container">
     <h1>BALANCE RIFA</h1>
 
-    <!-- Resumen: muestra la cantidad total de números seleccionados (suma por fila) -->
+    <!-- Recuadro centrado con la cantidad total -->
     <div class="summary-wrap" aria-live="polite">
       <div id="selectedBox" class="selected-badge" style="display:none"></div>
       <div id="selectedCaption" class="summary-caption" style="display:none">N° Seleccionados</div>
@@ -151,7 +151,7 @@
     const $selectedCaption = document.getElementById('selectedCaption');
 
     let DATA = [];
-    const PENDING = new Map(); // row -> 'PAGO'|'PENDIENTE' (se mantiene; no afecta el resumen)
+    const PENDING = new Map(); // row -> 'PAGO'|'PENDIENTE'
 
     // Conversión emojis 0️⃣..9️⃣ a dígitos y tokenización
     function normalizeKeycapDigits(s){
@@ -177,11 +177,7 @@
         return;
       }
       let total = 0;
-      for(const it of DATA){
-        total += parseNumbersFromCell(it.numeros).length;
-      }
-      // Si prefieres contar únicos:
-      // const set = new Set(); for(const it of DATA){ for(const n of parseNumbersFromCell(it.numeros)) set.add(n); } const total = set.size;
+      for(const it of DATA) total += parseNumbersFromCell(it.numeros).length;
 
       $selectedBox.textContent = String(total);
       $selectedBox.style.display = 'inline-block';
@@ -242,7 +238,6 @@
         const newEstado = (!isPaid ? 'PAGO' : 'PENDIENTE');
         PENDING.set(item.row, newEstado);
         $save.disabled = PENDING.size === 0;
-        // No actualizamos el resumen aquí porque la cantidad total no cambia con el estado.
         play(SOUNDS.info);
       });
 
@@ -281,7 +276,7 @@
             timer:1600,
             showConfirmButton:false
           });
-          await load(); // updateSelectedSummary() será llamado dentro de load()
+          await listar(); // mantiene tu flujo (spin incluido)
         }catch(e){
           Swal.fire({ icon:'error', title:'No se pudo liberar', text: e.message || 'Error desconocido' });
         }
@@ -324,18 +319,31 @@
       for(const it of list) $list.appendChild(createCard(it));
     }
 
+    // Carga de datos (se usa dentro de listar)
     async function load(){
       try{
-        DATA = await apiGet('listcomprados');
-        PENDING.clear();
-        $save.disabled = true;
-        render(DATA);
-        updateSelectedSummary(); // calcula y muestra la cantidad total
+        const data = await apiGet('listcomprados');
+        return data;
       }catch(e){
         Swal.fire({ icon:'error', title:'Error al cargar', text:e.message });
+        return [];
       }
     }
 
+    // Mantener compatibilidad con tu flujo: enlistar al iniciar + spinner
+    async function listar(){
+      DATA = await load();
+      PENDING.clear();
+      $save.disabled = true;
+      render(DATA);
+      updateSelectedSummary(); // calcula y muestra la cantidad total
+    }
+    window.listar = listar; // por si otro script ya la invoca
+
+    // Llamada al iniciar la vista (mantiene tu comportamiento original)
+    document.addEventListener('DOMContentLoaded', listar);
+
+    // Guardar cambios
     document.getElementById('save').addEventListener('click', async ()=>{
       if(PENDING.size===0) return;
       const cambios = [];
@@ -345,13 +353,11 @@
         await Swal.fire({ icon:'success', title:'Cambios guardados', timer:1400, showConfirmButton:false });
         PENDING.clear();
         $save.disabled = true;
-        await load(); // actualiza lista y la cantidad total
+        await listar(); // recarga y actualiza el contador con loader
       }catch(e){
         Swal.fire({ icon:'error', title:'No se pudo guardar', text:e.message });
       }
     });
-
-    document.addEventListener('DOMContentLoaded', load);
   </script>
 </body>
 </html>
