@@ -201,28 +201,42 @@
       btnLiberar.className = 'liberar-btn';
       btnLiberar.textContent = 'LIBERAR';
       btnLiberar.addEventListener('click', async () => {
-        const numsList = parseNumbersFromCell(item.numeros).join(SEPARATOR);
-        const rs = await Swal.fire({
-          icon: 'question',
-          title: '¿Liberar números?',
-          html: `Se liberarán: <b>${numsList || '(sin números)'}</b><br>y se eliminará este registro.`,
-          showCancelButton: true,
-          confirmButtonText: 'Sí, liberar',
-          cancelButtonText: 'Cancelar',
-          confirmButtonColor: '#16a34a',
-          cancelButtonColor: '#dc2626',
-          focusCancel: true
-        });
-        if(!rs.isConfirmed) return;
+  const numsList = parseNumbersFromCell(item.numeros).join(SEPARATOR); // ej: "13, 15"
+  const nombre = item.nombre || '—';
 
-        try{
-          await apiPost('liberar', { row: item.row });
-          await Swal.fire({ icon:'success', title:'Liberado', text:'Números marcados como DISPONIBLE y registro eliminado.', timer:1600, showConfirmButton:false });
-          await load();
-        }catch(e){
-          Swal.fire({ icon:'error', title:'No se pudo liberar', text: e.message || 'Error desconocido' });
-        }
-      });
+  const rs = await Swal.fire({
+    icon: 'question',
+    title: '¿Liberar números?',
+    html: `
+      <div style="text-align:left;line-height:1.4;">
+        <div style="margin-bottom:6px;"><b>${nombre}</b></div>
+        <div>Se liberarán: <b>${numsList || '(sin números)'}</b></div>
+        <div style="margin-top:6px;">Se eliminará este registro.</div>
+      </div>
+    `,
+    showCancelButton: true,
+    confirmButtonText: 'Sí, liberar',
+    cancelButtonText: 'Cancelar',
+    confirmButtonColor: '#16a34a',
+    cancelButtonColor: '#dc2626',
+    focusCancel: true
+  });
+  if(!rs.isConfirmed) return;
+
+  try{
+    await apiPost('liberar', { row: item.row });
+    await Swal.fire({
+      icon:'success',
+      title:'Liberado',
+      text:'Números marcados como DISPONIBLE y registro eliminado.',
+      timer:1600,
+      showConfirmButton:false
+    });
+    await load();
+  }catch(e){
+    Swal.fire({ icon:'error', title:'No se pudo liberar', text: e.message || 'Error desconocido' });
+  }
+});
 
       const wa = document.createElement('a');
       wa.className = 'wa';
