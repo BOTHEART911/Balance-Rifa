@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>BALANCE RIFA</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root{
+      --primary:#3f37c9;
+      --ok:#16a34a;
+      --error:#dc2626;
+      --chip:#0b5ed7;
+    }
+    html,body{ margin:0; padding:0; background:#f4f5fb; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; color:#111; }
+    .container{ max-width:720px; margin:0 auto; padding:16px; }
+    h1{ text-align:center; color:#2a26a8; text-shadow:0 2px 2px #03173222; margin:10px 0 14px; letter-spacing:.5px; }
+
+    .card{
+      background:#e9e9ef;
+      border:3px solid var(--primary);
+      border-radius:20px;
+      padding:12px 14px 10px;
+      box-shadow:0 6px 14px rgba(0,0,0,.10);
+      margin:10px 0;
+    }
+    .row{ display:flex; justify-content:space-between; gap:10px; align-items:flex-start; margin-bottom:6px; }
+    .name{ font-weight:900; font-size:1.15rem; color:#1b2a6b; }
+    .datetime{ color:#444; font-weight:700; white-space:nowrap; font-size:.9rem; }
+    .nums{ display:flex; flex-wrap:wrap; gap:6px; margin:4px 0 10px; }
+    .num-chip{
+      display:inline-flex; align-items:center; justify-content:center;
+      background:var(--chip); color:#fff; min-width:26px; height:26px; padding:0 8px;
+      border-radius:6px; border:2px solid #0a53be; font-weight:800; box-shadow:0 2px 6px rgba(0,0,0,.12);
+    }
+    .actions{ display:flex; gap:10px; align-items:center; margin-top:4px; }
+    .status-btn{
+      border-radius:999px; padding:10px 18px; font-weight:900; cursor:pointer; min-width:150px;
+      background:#fff; border:3px solid #111; box-shadow:0 4px 10px rgba(0,0,0,.12);
+    }
+    .status-pending{ border-color:var(--error); color:#e11; background:#fff; }
+    .status-pending::before{ content:"PENDIENTE"; }
+    .status-paid{ border-color:#7adf9b; color:#0a0; background:#d7f8e3; }
+    .status-paid::before{ content:"PAGO"; }
+    .liberar-btn{
+      border-radius:999px; padding:10px 18px; font-weight:900; cursor:pointer; min-width:150px;
+      background:#fff; color:#111; border:3px solid #111; box-shadow:0 4px 10px rgba(0,0,0,.12);
+    }
+    .wa{
+      margin-left:auto; display:inline-flex; align-items:center; justify-content:center;
+      width:42px; height:42px; border-radius:10px; border:2px solid #25D366; background:#fff;
+      box-shadow:0 6px 12px rgba(0,0,0,.18);
+    }
+    .wa img{ width:28px; height:28px; object-fit:contain; border-radius:6px; background:#fff; }
+    .save-wrap{ display:flex; justify-content:center; margin:12px 0 30px; }
+    .save-btn{
+      border-radius:999px; padding:12px 20px; font-weight:900; cursor:pointer; min-width:220px;
+      background:#fff; color:#111; border:3px solid #111; box-shadow:0 10px 20px rgba(0,0,0,.14);
+    }
+    .save-btn[disabled]{ opacity:.55; cursor:not-allowed; }
+
+    .loader{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.35); z-index:9999; }
+    .loader.active{ display:flex; }
+    .spinner{ width:60px; height:60px; border-radius:50%; border:6px solid #fff; border-top-color:var(--primary); animation:spin 1s linear infinite; }
+    @keyframes spin{ to{ transform:rotate(360deg); } }
+
+    @media (max-width:420px){ .status-btn,.liberar-btn{ min-width:120px; padding:10px 12px; } .wa{ width:38px; height:38px; } }
+  </style>
+</head>
+<body>
+  <div class="loader" id="loader"><div class="spinner" aria-label="Cargando"></div></div>
+  <div class="container">
+    <h1>BALANCE RIFA</h1>
+    <div id="list"></div>
+    <div class="save-wrap">
+      <button id="save" class="save-btn" disabled>Guardar Cambios</button>
+    </div>
+  </div>
+
+  <script>
+    // URL de la propia Web App (inyectada desde Apps Script)
+    const API_BASE = 'https://script.google.com/macros/s/AKfycbyG9uHwWUzawyQ7p4vXQwtcq8D72WUhGwSGersAoydj5x_TSBkhpCKqStMBkqPduZpF/exec';
+
+    // Sonidos (mismos de tu referencia)
+    const SOUNDS = {
+      info:    'https://res.cloudinary.com/dqqeavica/video/upload/v1759011578/Default_notification_pkp4wr.mp3',
+      success: 'https://res.cloudinary.com/dqqeavica/video/upload/v1759011577/Pay_success_t5aawh.mp3',
+      error:   'https://res.cloudinary.com/dqqeavica/video/upload/v1759011578/Low_battery_d5qua1.mp3',
+    };
+    function play(u){ try{ new Audio(u).play().catch(()=>{}); }catch(_){} }
+
+    // API helpers (GET/POST contra ?action=...)
+    const $loader = document.getElementById('loader');
+    function setLoading(v){ $loader.classList.toggle('active', !!v); }
+
+    async function apiGet(action, params = {}){
+      setLoading(true);
+      try{
+        const url = new URL(API_BASE);
+        url.search = new URLSearchParams({ action, ...params }).toString();
+        const r = await fetch(url.toString(), { method:'GET', headers:{ 'Accept':'application/json' } });
+        const j = await r.json();
+        if(!j.ok) throw new Error(j.error || 'Error');
+        return j.data;
+      } finally { setLoading(false); }
+    }
+    async function apiPost(action, body = {}){
+      setLoading(true);
+      try{
+        const url = API_BASE + '?action=' + encodeURIComponent(action);
+        const r = await fetch(url, { method:'POST', headers:{ 'Content-Type':'text/plain;charset=utf-8', 'Accept':'application/json' }, body: JSON.stringify(body) });
+        const j = await r.json();
+        if(!j.ok) throw new Error(j.error || 'Error');
+        return j.data;
+      } finally { setLoading(false); }
+    }
+
+    // UI
+    const $list = document.getElementById('list');
+    const $save = document.getElementById('save');
+    let DATA = [];
+    const PENDING = new Map(); // row -> 'PAGO'|'PENDIENTE'
+
+    function chipify(numerosRaw){
+      const tokens = String(numerosRaw || '').match(/\d+/g) || [];
+      const frag = document.createDocumentFragment();
+      for(const t of tokens){
+        const s = document.createElement('span');
+        s.className = 'num-chip';
+        s.textContent = t;
+        frag.appendChild(s);
+      }
+      return frag;
+    }
+    function statusClass(estado){
+      const e = String(estado || '').trim().toUpperCase();
+      return (e === 'PAGO' || e === 'PAGÓ' || e === 'PAGADO') ? 'status-paid' : 'status-pending';
+    }
+    function createCard(item){
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.dataset.row = item.row;
+
+      const top = document.createElement('div');
+      top.className = 'row';
+      const name = document.createElement('div');
+      name.className = 'name';
+      name.textContent = item.nombre || '—';
+      const dt = document.createElement('div');
+      dt.className = 'datetime';
+      dt.textContent = item.fechaHora || '';
+      top.appendChild(name); top.appendChild(dt);
+
+      const nums = document.createElement('div');
+      nums.className = 'nums';
+      nums.appendChild(chipify(item.numeros));
+
+      const acts = document.createElement('div');
+      acts.className = 'actions';
+
+      const btnStatus = document.createElement('button');
+      btnStatus.className = 'status-btn ' + statusClass(item.estado);
+      btnStatus.addEventListener('click', () => {
+        const isPaid = btnStatus.classList.contains('status-paid');
+        btnStatus.classList.toggle('status-paid', !isPaid);
+        btnStatus.classList.toggle('status-pending', isPaid);
+        const newEstado = (!isPaid ? 'PAGO' : 'PENDIENTE');
+        PENDING.set(item.row, newEstado);
+        $save.disabled = PENDING.size === 0;
+        play(SOUNDS.info);
+      });
+
+      const btnLiberar = document.createElement('button');
+      btnLiberar.className = 'liberar-btn';
+      btnLiberar.textContent = 'LIBERAR';
+      btnLiberar.addEventListener('click', async () => {
+        const ok = confirm(`¿Liberar los números de "${item.nombre||''}" y borrar este registro?\n\nSe marcarán como DISPONIBLE en "NUMEROS" y se eliminará la fila en "COMPRADOS".`);
+        if(!ok) return;
+        try{
+          await apiPost('liberar', { row: item.row });
+          play(SOUNDS.success);
+          await load(); // recargar
+        }catch(e){
+          alert('No se pudo liberar: ' + e.message);
+          play(SOUNDS.error);
+        }
+      });
+
+      const wa = document.createElement('a');
+      wa.className = 'wa';
+      const digits = String(item.phone||'').replace(/\D/g,'');
+      if(digits){
+        const full = digits.startsWith('57') ? digits : ('57' + digits.slice(-10));
+        wa.href = 'https://wa.me/' + full;
+        wa.target = '_blank'; wa.rel = 'noopener';
+      }else{
+        wa.href='javascript:void(0)'; wa.style.opacity=.45;
+      }
+      const img = document.createElement('img');
+      img.alt='WhatsApp';
+      img.src='https://res.cloudinary.com/dqqeavica/image/upload/v1759166341/WhatsApp_mljaqm.webp';
+      wa.appendChild(img);
+
+      acts.appendChild(btnStatus);
+      acts.appendChild(btnLiberar);
+      acts.appendChild(wa);
+
+      card.appendChild(top);
+      card.appendChild(nums);
+      card.appendChild(acts);
+      return card;
+    }
+    function render(list){
+      $list.innerHTML = '';
+      if(!list?.length){
+        const p = document.createElement('p');
+        p.textContent = 'Sin registros';
+        p.style.textAlign='center'; p.style.color='#444';
+        $list.appendChild(p);
+        return;
+      }
+      for(const it of list) $list.appendChild(createCard(it));
+    }
+    async function load(){
+      try{
+        DATA = await apiGet('listcomprados');
+        PENDING.clear();
+        $save.disabled = true;
+        render(DATA);
+      }catch(e){
+        alert('Error al cargar: ' + e.message);
+        play(SOUNDS.error);
+      }
+    }
+    document.getElementById('save').addEventListener('click', async ()=>{
+      if(PENDING.size===0) return;
+      const cambios = [];
+      for(const [row, estado] of PENDING.entries()) cambios.push({row, estado: String(estado||'').toUpperCase()});
+      try{
+        await apiPost('guardarEstados', { cambios });
+        play(SOUNDS.success);
+        PENDING.clear();
+        $save.disabled = true;
+        await load();
+      }catch(e){
+        alert('No se pudo guardar: ' + e.message);
+        play(SOUNDS.error);
+      }
+    });
+
+    document.addEventListener('DOMContentLoaded', load);
+  </script>
+</body>
+</html>
