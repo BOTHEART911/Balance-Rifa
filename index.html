@@ -39,21 +39,25 @@
     .num-chip{ display:inline-flex; align-items:center; justify-content:center; background:var(--chip); color:#fff; min-width:26px; height:26px; padding:0 8px; border-radius:6px; border:2px solid #0a53be; font-weight:800; box-shadow:0 2px 6px rgba(0,0,0,.12); }
     .num-sep{ display:inline-block; margin:0 6px; color:#2a26a8; font-weight:900; user-select:none; }
     .actions{ display:flex; gap:10px; align-items:center; margin-top:4px; }
+
     .status-btn{ border-radius:999px; padding:10px 18px; font-weight:900; cursor:pointer; min-width:150px; background:#fff; border:3px solid #111; box-shadow:0 4px 10px rgba(0,0,0,.12); }
     .status-pending{ border-color:var(--error); color:#e11; background:#fff; }
     .status-pending::before{ content:"PENDIENTE"; }
     .status-paid{ border-color:#7adf9b; color:#0a0; background:#d7f8e3; }
     .status-paid::before{ content:"PAGO"; }
+
     .liberar-btn{ border-radius:999px; padding:10px 18px; font-weight:900; cursor:pointer; min-width:150px; background:#fff; color:#111; border:3px solid #111; box-shadow:0 4px 10px rgba(0,0,0,.12); }
+
+    /* Grupo de íconos a la derecha (cobrar + whatsapp) */
+    .actions-right{
+      margin-left:auto; display:flex; gap:10px; align-items:center;
+    }
 
     /* Botones de acción por WhatsApp (mismo tamaño) */
     .wa, .charge{
-      margin-left:auto;
       display:inline-flex; align-items:center; justify-content:center;
       width:42px; height:42px; border-radius:10px; border:2px solid #25D366; background:#fff; box-shadow:0 6px 12px rgba(0,0,0,.18);
     }
-    /* el de cobrar no debe llevar margin-left:auto si va antes del wa, así que lo anulamos luego */
-    .charge{ margin-left:0; }
     .wa img, .charge img{ width:28px; height:28px; object-fit:contain; border-radius:6px; background:#fff; }
 
     .save-wrap{ display:flex; justify-content:center; margin:12px 0 30px; }
@@ -351,10 +355,15 @@ Quedamos atentos, mil gracias por la colaboración`;
       img.src='https://res.cloudinary.com/dqqeavica/image/upload/v1759166341/WhatsApp_mljaqm.webp';
       wa.appendChild(img);
 
+      // Grupo derecho: cobrar + whatsapp juntos al borde
+      const icons = document.createElement('div');
+      icons.className = 'actions-right';
+      icons.appendChild(charge);
+      icons.appendChild(wa);
+
       acts.appendChild(btnStatus);
       acts.appendChild(btnLiberar);
-      acts.appendChild(charge); // nuevo botón (a la izquierda del WhatsApp)
-      acts.appendChild(wa);
+      acts.appendChild(icons);
 
       card.appendChild(top);
       card.appendChild(nums);
