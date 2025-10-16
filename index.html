@@ -45,17 +45,32 @@
     .status-paid{ border-color:#7adf9b; color:#0a0; background:#d7f8e3; }
     .status-paid::before{ content:"PAGO"; }
     .liberar-btn{ border-radius:999px; padding:10px 18px; font-weight:900; cursor:pointer; min-width:150px; background:#fff; color:#111; border:3px solid #111; box-shadow:0 4px 10px rgba(0,0,0,.12); }
-    .wa{ margin-left:auto; display:inline-flex; align-items:center; justify-content:center; width:42px; height:42px; border-radius:10px; border:2px solid #25D366; background:#fff; box-shadow:0 6px 12px rgba(0,0,0,.18); }
-    .wa img{ width:28px; height:28px; object-fit:contain; border-radius:6px; background:#fff; }
+
+    /* Botones de acción por WhatsApp (mismo tamaño) */
+    .wa, .charge{
+      margin-left:auto;
+      display:inline-flex; align-items:center; justify-content:center;
+      width:42px; height:42px; border-radius:10px; border:2px solid #25D366; background:#fff; box-shadow:0 6px 12px rgba(0,0,0,.18);
+    }
+    /* el de cobrar no debe llevar margin-left:auto si va antes del wa, así que lo anulamos luego */
+    .charge{ margin-left:0; }
+    .wa img, .charge img{ width:28px; height:28px; object-fit:contain; border-radius:6px; background:#fff; }
+
     .save-wrap{ display:flex; justify-content:center; margin:12px 0 30px; }
     .save-btn{ border-radius:999px; padding:12px 20px; font-weight:900; cursor:pointer; min-width:220px; background:#fff; color:#111; border:3px solid #111; box-shadow:0 10px 20px rgba(0,0,0,.14); }
     .save-btn[disabled]{ opacity:.55; cursor:not-allowed; }
+
     /* Loader overlay con spin */
     .loader{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.35); z-index:9999; }
     .loader.active{ display:flex; }
     .spinner{ width:60px; height:60px; border-radius:50%; border:6px solid #fff; border-top-color:var(--primary); animation:spin 1s linear infinite; }
     @keyframes spin{ to{ transform:rotate(360deg); } }
-    @media (max-width:420px){ .status-btn,.liberar-btn{ min-width:120px; padding:10px 12px; } .wa{ width:38px; height:38px; } }
+
+    @media (max-width:420px){
+      .status-btn,.liberar-btn{ min-width:120px; padding:10px 12px; }
+      .wa, .charge{ width:38px; height:38px; }
+      .wa img, .charge img{ width:26px; height:26px; }
+    }
   </style>
 </head>
 <body>
@@ -207,6 +222,25 @@
       return (e === 'PAGO' || e === 'PAGÓ' || e === 'PAGADO') ? 'status-paid' : 'status-pending';
     }
 
+    // Utilidad: primer nombre en Título
+    function firstNameOf(fullName){
+      const name = String(fullName||'').trim();
+      if(!name) return '';
+      const first = name.split(/\s+/)[0];
+      return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
+    }
+
+    // Mensaje de cobro por WhatsApp
+    function buildChargeMessage(item){
+      const nombre = firstNameOf(item.nombre || '');
+      const numeros = parseNumbersFromCell(item.numeros).join(SEPARATOR);
+      return `Hola ${nombre} ¿Cómo estás?
+
+Quería recordarte el sorteo de la rifa y el pago de tu(s) número(s): ${numeros}
+
+Quedamos atentos, mil gracias por la colaboración`;
+    }
+
     function createCard(item){
       const card = document.createElement('div');
       card.className = 'card';
@@ -282,11 +316,31 @@
         }
       });
 
+      // Teléfono normalizado
+      const digits = String(item.phone||'').replace(/\D/g,'');
+      const full = digits ? (digits.startsWith('57') ? digits : ('57' + digits.slice(-10))) : '';
+
+      // Botón COBRAR (imagen provista) - misma lógica de wa, pero con mensaje prellenado
+      const charge = document.createElement('a');
+      charge.className = 'charge';
+      charge.setAttribute('aria-label','Cobrar por WhatsApp');
+      const chargeImg = document.createElement('img');
+      chargeImg.alt='Cobrar';
+      chargeImg.src='https://res.cloudinary.com/dqqeavica/image/upload/v1760575142/cobrar_cllc9l.webp';
+      charge.appendChild(chargeImg);
+
+      if(full){
+        const msg = buildChargeMessage(item);
+        charge.href = 'https://wa.me/' + full + '?text=' + encodeURIComponent(msg);
+        charge.target = '_blank'; charge.rel = 'noopener';
+      }else{
+        charge.href='javascript:void(0)'; charge.style.opacity=.45;
+      }
+
+      // Botón WhatsApp existente
       const wa = document.createElement('a');
       wa.className = 'wa';
-      const digits = String(item.phone||'').replace(/\D/g,'');
-      if(digits){
-        const full = digits.startsWith('57') ? digits : ('57' + digits.slice(-10));
+      if(full){
         wa.href = 'https://wa.me/' + full;
         wa.target = '_blank'; wa.rel = 'noopener';
       }else{
@@ -299,6 +353,7 @@
 
       acts.appendChild(btnStatus);
       acts.appendChild(btnLiberar);
+      acts.appendChild(charge); // nuevo botón (a la izquierda del WhatsApp)
       acts.appendChild(wa);
 
       card.appendChild(top);
