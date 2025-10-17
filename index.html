@@ -14,22 +14,51 @@
     .container{ max-width:720px; margin:0 auto; padding:16px; }
     h1{ text-align:center; color:#2a26a8; text-shadow:0 2px 2px #03173222; margin:10px 0 14px; letter-spacing:.5px; }
 
-    /* Resumen de N° seleccionados (estilo del botón PAGO, más corto) */
+    /* Resumen de N° seleccionados + filtro (dos campos centrados) */
     .summary-wrap{
-      display:flex; flex-direction:column; align-items:center; justify-content:center;
-      gap:6px; margin:6px 0 12px;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      gap:6px;
+      margin:6px 0 12px;
     }
+
+    .summary-row{
+      display:flex;
+      gap:12px;
+      align-items:center;
+      justify-content:center;
+      width:100%;
+    }
+
     .selected-badge{
       display:inline-block;
       border-radius:999px; padding:8px 14px;
       font-weight:900; text-align:center;
       color:#0a0; background:#d7f8e3; border:3px solid #7adf9b; box-shadow:0 4px 10px rgba(0,0,0,.12);
-      min-width:120px; max-width:92%;
+      min-width:120px; max-width:50%;
       word-break:break-word; line-height:1.15;
     }
     .summary-caption{
       font-size:.85rem; color:#666; text-align:center;
     }
+
+    /* Nuevo campo de filtro (blanco ovalado con borde negro) */
+    .filter-input{
+      appearance:none;
+      border-radius:999px;
+      background:#fff;
+      border:3px solid #111;
+      padding:10px 16px;
+      font-weight:700;
+      min-width:220px;
+      max-width:50%;
+      box-shadow:0 8px 18px rgba(0,0,0,.08);
+      outline:none;
+      font-size:0.95rem;
+    }
+    .filter-input::placeholder{ color:#999; font-weight:600; }
 
     .card{ background:#e9e9ef; border:3px solid var(--primary); border-radius:20px; padding:12px 14px 10px; box-shadow:0 6px 14px rgba(0,0,0,.10); margin:10px 0; }
     .row{ display:flex; justify-content:space-between; gap:10px; align-items:flex-start; margin-bottom:6px; }
@@ -70,7 +99,12 @@
     .spinner{ width:60px; height:60px; border-radius:50%; border:6px solid #fff; border-top-color:var(--primary); animation:spin 1s linear infinite; }
     @keyframes spin{ to{ transform:rotate(360deg); } }
 
+    @media (max-width:720px){
+      .selected-badge{ max-width:40%; min-width:90px; }
+      .filter-input{ max-width:55%; min-width:160px; }
+    }
     @media (max-width:420px){
+      .summary-row{ flex-direction:column; gap:8px; }
       .status-btn,.liberar-btn{ min-width:120px; padding:10px 12px; }
       .wa, .charge{ width:38px; height:38px; }
       .wa img, .charge img{ width:26px; height:26px; }
@@ -82,9 +116,12 @@
   <div class="container">
     <h1>BALANCE RIFA</h1>
 
-    <!-- Recuadro centrado con la cantidad total -->
+    <!-- Recuadro centrado con la cantidad total y filtro -->
     <div class="summary-wrap" aria-live="polite">
-      <div id="selectedBox" class="selected-badge" style="display:none"></div>
+      <div class="summary-row">
+        <div id="selectedBox" class="selected-badge" style="display:none"></div>
+        <input id="filterInput" class="filter-input" type="text" placeholder="escribe para filtrar" aria-label="Filtrar por nombre, números, teléfono o estado">
+      </div>
       <div id="selectedCaption" class="summary-caption" style="display:none">N° Seleccionados</div>
     </div>
 
@@ -168,6 +205,7 @@
     const $save = document.getElementById('save');
     const $selectedBox = document.getElementById('selectedBox');
     const $selectedCaption = document.getElementById('selectedCaption');
+    const $filterInput = document.getElementById('filterInput');
 
     let DATA = [];
     const PENDING = new Map(); // row -> 'PAGO'|'PENDIENTE'
@@ -187,16 +225,16 @@
       return plain.split(/[^0-9]+/).filter(Boolean); // ["13","15"]
     }
 
-    // Resumen: suma de la cantidad de números por cada fila (todas las filas cargadas)
-    function updateSelectedSummary(){
-      if(!Array.isArray(DATA) || DATA.length === 0){
+    // Resumen: suma de la cantidad de números por cada fila (usar lista visible)
+    function updateSelectedSummary(list){
+      if(!Array.isArray(list) || list.length === 0){
         $selectedBox.style.display = 'none';
         $selectedCaption.style.display = 'none';
         $selectedBox.textContent = '';
         return;
       }
       let total = 0;
-      for(const it of DATA) total += parseNumbersFromCell(it.numeros).length;
+      for(const it of list) total += parseNumbersFromCell(it.numeros).length;
 
       $selectedBox.textContent = String(total);
       $selectedBox.style.display = 'inline-block';
@@ -238,11 +276,13 @@
     function buildChargeMessage(item){
       const nombre = firstNameOf(item.nombre || '');
       const numeros = parseNumbersFromCell(item.numeros).join(SEPARATOR);
-      return `Hola ${nombre} ¿Cómo estás?
+      return `Hola ${nombre} ¿Cómo estás?`
 
-Quería recordarte el sorteo de la rifa y el pago de tu(s) número(s): ${numeros}
++ "\n\n" +
+`Quería recordarte el sorteo de la rifa y el pago de tu(s) número(s): ${numeros}`
 
-Quedamos atentos, mil gracias por la colaboración`;
++ "\n\n" +
+`Quedamos atentos, mil gracias por la colaboración`;
     }
 
     function createCard(item){
@@ -383,6 +423,45 @@ Quedamos atentos, mil gracias por la colaboración`;
       for(const it of list) $list.appendChild(createCard(it));
     }
 
+    // Filtrado: por nombre, numeros, telefono, estado (case-insensitive)
+    function normalizeForSearch(s){
+      return String(s||'').toLowerCase();
+    }
+    function phoneDigits(s){
+      return String(s||'').replace(/\D/g,'');
+    }
+
+    function matchesFilter(item, qRaw){
+      if(!qRaw) return true;
+      const q = normalizeKeycapDigits(String(qRaw)).toLowerCase().trim();
+      if(!q) return true;
+
+      // name
+      const name = normalizeForSearch(item.nombre);
+      if(name.includes(q)) return true;
+
+      // estado
+      const estado = normalizeForSearch(item.estado);
+      if(estado.includes(q)) return true;
+
+      // phone
+      const phone = phoneDigits(item.phone);
+      if(phone && phone.includes(q.replace(/\D/g,''))) return true;
+
+      // numeros (compare both raw and numeric)
+      const numerosRaw = normalizeKeycapDigits(String(item.numeros||'')).toLowerCase();
+      if(numerosRaw.includes(q)) return true;
+
+      // also check individual numbers
+      const nums = parseNumbersFromCell(item.numeros).map(n=>n.toLowerCase());
+      for(const n of nums){
+        if(n.includes(q)) return true;
+        if(q && q.replace(/\D/g,'') && n.includes(q.replace(/\D/g,''))) return true;
+      }
+
+      return false;
+    }
+
     // Carga de datos (se usa dentro de listar)
     async function load(){
       try{
@@ -399,8 +478,11 @@ Quedamos atentos, mil gracias por la colaboración`;
       DATA = await load();
       PENDING.clear();
       $save.disabled = true;
-      render(DATA);
-      updateSelectedSummary(); // calcula y muestra la cantidad total
+      // aplicar filtro actual (si hay)
+      const q = $filterInput.value || '';
+      const filtered = DATA.filter(item => matchesFilter(item, q));
+      render(filtered);
+      updateSelectedSummary(filtered); // calcula y muestra la cantidad total de la vista filtrada
     }
     window.listar = listar; // por si otro script ya la invoca
 
@@ -422,6 +504,21 @@ Quedamos atentos, mil gracias por la colaboración`;
         Swal.fire({ icon:'error', title:'No se pudo guardar', text:e.message });
       }
     });
+
+    // Filtrado en vivo con debounce
+    function debounce(fn, wait=200){
+      let t;
+      return (...args) => { clearTimeout(t); t = setTimeout(()=>fn(...args), wait); };
+    }
+
+    const applyFilter = debounce(() => {
+      const q = $filterInput.value || '';
+      const filtered = DATA.filter(item => matchesFilter(item, q));
+      render(filtered);
+      updateSelectedSummary(filtered);
+    }, 180);
+
+    $filterInput.addEventListener('input', applyFilter);
   </script>
 </body>
 </html>
