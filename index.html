@@ -32,12 +32,21 @@
       width:100%;
     }
 
+    /* Grupo que contiene el badge y su caption (caption debajo del badge) */
+    .selected-group{
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      gap:6px;
+      min-width:120px;
+    }
+
     .selected-badge{
       display:inline-block;
       border-radius:999px; padding:8px 14px;
       font-weight:900; text-align:center;
       color:#0a0; background:#d7f8e3; border:3px solid #7adf9b; box-shadow:0 4px 10px rgba(0,0,0,.12);
-      min-width:120px; max-width:50%;
+      min-width:120px; max-width:92%;
       word-break:break-word; line-height:1.15;
     }
     .summary-caption{
@@ -53,7 +62,7 @@
       padding:10px 16px;
       font-weight:700;
       min-width:220px;
-      max-width:50%;
+      max-width:360px;
       box-shadow:0 8px 18px rgba(0,0,0,.08);
       outline:none;
       font-size:0.95rem;
@@ -104,7 +113,7 @@
       .filter-input{ max-width:55%; min-width:160px; }
     }
     @media (max-width:420px){
-      .summary-row{ flex-direction:column; gap:8px; }
+      .summary-row{ flex-direction:column; gap:8px; align-items:center; }
       .status-btn,.liberar-btn{ min-width:120px; padding:10px 12px; }
       .wa, .charge{ width:38px; height:38px; }
       .wa img, .charge img{ width:26px; height:26px; }
@@ -119,10 +128,13 @@
     <!-- Recuadro centrado con la cantidad total y filtro -->
     <div class="summary-wrap" aria-live="polite">
       <div class="summary-row">
-        <div id="selectedBox" class="selected-badge" style="display:none"></div>
+        <div class="selected-group" aria-hidden="false">
+          <div id="selectedBox" class="selected-badge" style="display:none"></div>
+          <div id="selectedCaption" class="summary-caption" style="display:none">N° Seleccionados</div>
+        </div>
+
         <input id="filterInput" class="filter-input" type="text" placeholder="escribe para filtrar" aria-label="Filtrar por nombre, números, teléfono o estado">
       </div>
-      <div id="selectedCaption" class="summary-caption" style="display:none">N° Seleccionados</div>
     </div>
 
     <div id="list"></div>
@@ -134,10 +146,8 @@
   <script>
     // Endpoint de tu implementación (GET/POST)
     const API_BASE = 'https://script.google.com/macros/s/AKfycbyG9uHwWUzawyQ7p4vXQwtcq8D72WUhGwSGersAoydj5x_TSBkhpCKqStMBkqPduZpF/exec';
-    // Separador visual
     const SEPARATOR = ', ';
 
-    // Sonidos
     const SOUNDS = {
       question: 'https://res.cloudinary.com/dqqeavica/video/upload/v1759011577/Pay_fail_ls2aif.mp3',
       info:     'https://res.cloudinary.com/dqqeavica/video/upload/v1759011578/Default_notification_pkp4wr.mp3',
@@ -147,7 +157,6 @@
     };
     function play(url){ try{ new Audio(url).play().catch(()=>{}); }catch(_){} }
 
-    // Patch SweetAlert2 para sonido según icono
     if (window.Swal && typeof Swal.fire === 'function'){
       const __fire = Swal.fire.bind(Swal);
       Swal.fire = function(options = {}, ...rest){
@@ -159,7 +168,6 @@
       }
     }
 
-    // Loader con “smart delay”
     const $loader = document.getElementById('loader');
     let loadingCount = 0, loaderTimer = null;
     function startLoading(){
@@ -177,7 +185,6 @@
       }
     }
 
-    // API helpers
     async function apiGet(action, params = {}){
       startLoading();
       try{
@@ -200,7 +207,7 @@
       } finally { stopLoading(); }
     }
 
-    // Datos y UI
+    // UI elements
     const $list = document.getElementById('list');
     const $save = document.getElementById('save');
     const $selectedBox = document.getElementById('selectedBox');
@@ -210,22 +217,21 @@
     let DATA = [];
     const PENDING = new Map(); // row -> 'PAGO'|'PENDIENTE'
 
-    // Conversión emojis 0️⃣..9️⃣ a dígitos y tokenización
+    // Convert keycap digits to normal digits
     function normalizeKeycapDigits(s){
       if(!s) return '';
       const map = {'0️⃣':'0','1️⃣':'1','2️⃣':'2','3️⃣':'3','4️⃣':'4','5️⃣':'5','6️⃣':'6','7️⃣':'7','8️⃣':'8','9️⃣':'9'};
       let out = String(s);
       for(const k in map){ out = out.split(k).join(map[k]); }
-      // fallback 1\uFE0F\u20E3
       out = out.replace(/([0-9])\uFE0F\u20E3/g, '$1');
       return out;
     }
     function parseNumbersFromCell(raw){
       const plain = normalizeKeycapDigits(String(raw||''));
-      return plain.split(/[^0-9]+/).filter(Boolean); // ["13","15"]
+      return plain.split(/[^0-9]+/).filter(Boolean);
     }
 
-    // Resumen: suma de la cantidad de números por cada fila (usar lista visible)
+    // Update summary based on the list currently rendered (visible)
     function updateSelectedSummary(list){
       if(!Array.isArray(list) || list.length === 0){
         $selectedBox.style.display = 'none';
@@ -264,7 +270,6 @@
       return (e === 'PAGO' || e === 'PAGÓ' || e === 'PAGADO') ? 'status-paid' : 'status-pending';
     }
 
-    // Utilidad: primer nombre en Título
     function firstNameOf(fullName){
       const name = String(fullName||'').trim();
       if(!name) return '';
@@ -272,17 +277,14 @@
       return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
     }
 
-    // Mensaje de cobro por WhatsApp
     function buildChargeMessage(item){
       const nombre = firstNameOf(item.nombre || '');
       const numeros = parseNumbersFromCell(item.numeros).join(SEPARATOR);
-      return `Hola ${nombre} ¿Cómo estás?`
+      return `Hola ${nombre} ¿Cómo estás?
 
-+ "\n\n" +
-`Quería recordarte el sorteo de la rifa y el pago de tu(s) número(s): ${numeros}`
+Quería recordarte el sorteo de la rifa y el pago de tu(s) número(s): ${numeros}
 
-+ "\n\n" +
-`Quedamos atentos, mil gracias por la colaboración`;
+Quedamos atentos, mil gracias por la colaboración`;
     }
 
     function createCard(item){
@@ -354,17 +356,15 @@
             timer:1600,
             showConfirmButton:false
           });
-          await listar(); // mantiene tu flujo (spin incluido)
+          await listar();
         }catch(e){
           Swal.fire({ icon:'error', title:'No se pudo liberar', text: e.message || 'Error desconocido' });
         }
       });
 
-      // Teléfono normalizado
       const digits = String(item.phone||'').replace(/\D/g,'');
       const full = digits ? (digits.startsWith('57') ? digits : ('57' + digits.slice(-10))) : '';
 
-      // Botón COBRAR (imagen provista) - misma lógica de wa, pero con mensaje prellenado
       const charge = document.createElement('a');
       charge.className = 'charge';
       charge.setAttribute('aria-label','Cobrar por WhatsApp');
@@ -381,7 +381,6 @@
         charge.href='javascript:void(0)'; charge.style.opacity=.45;
       }
 
-      // Botón WhatsApp existente
       const wa = document.createElement('a');
       wa.className = 'wa';
       if(full){
@@ -395,7 +394,6 @@
       img.src='https://res.cloudinary.com/dqqeavica/image/upload/v1759166341/WhatsApp_mljaqm.webp';
       wa.appendChild(img);
 
-      // Grupo derecho: cobrar + whatsapp juntos al borde
       const icons = document.createElement('div');
       icons.className = 'actions-right';
       icons.appendChild(charge);
@@ -423,7 +421,7 @@
       for(const it of list) $list.appendChild(createCard(it));
     }
 
-    // Filtrado: por nombre, numeros, telefono, estado (case-insensitive)
+    // Search helpers
     function normalizeForSearch(s){
       return String(s||'').toLowerCase();
     }
@@ -444,25 +442,26 @@
       const estado = normalizeForSearch(item.estado);
       if(estado.includes(q)) return true;
 
-      // phone
+      // phone (compare numeric-only)
       const phone = phoneDigits(item.phone);
-      if(phone && phone.includes(q.replace(/\D/g,''))) return true;
+      const qDigits = q.replace(/\D/g,'');
+      if(phone && qDigits && phone.includes(qDigits)) return true;
+      if(phone && q && phone.includes(q)) return true;
 
-      // numeros (compare both raw and numeric)
+      // numeros (raw normalized)
       const numerosRaw = normalizeKeycapDigits(String(item.numeros||'')).toLowerCase();
       if(numerosRaw.includes(q)) return true;
 
-      // also check individual numbers
-      const nums = parseNumbersFromCell(item.numeros).map(n=>n.toLowerCase());
+      // individual number match
+      const nums = parseNumbersFromCell(item.numeros).map(n=>String(n).toLowerCase());
       for(const n of nums){
         if(n.includes(q)) return true;
-        if(q && q.replace(/\D/g,'') && n.includes(q.replace(/\D/g,''))) return true;
+        if(qDigits && n.includes(qDigits)) return true;
       }
 
       return false;
     }
 
-    // Carga de datos (se usa dentro de listar)
     async function load(){
       try{
         const data = await apiGet('listcomprados');
@@ -473,23 +472,20 @@
       }
     }
 
-    // Mantener compatibilidad con tu flujo: enlistar al iniciar + spinner
+    // Listar y aplicar filtro actual
     async function listar(){
       DATA = await load();
       PENDING.clear();
       $save.disabled = true;
-      // aplicar filtro actual (si hay)
       const q = $filterInput.value || '';
       const filtered = DATA.filter(item => matchesFilter(item, q));
       render(filtered);
-      updateSelectedSummary(filtered); // calcula y muestra la cantidad total de la vista filtrada
+      updateSelectedSummary(filtered);
     }
-    window.listar = listar; // por si otro script ya la invoca
+    window.listar = listar;
 
-    // Llamada al iniciar la vista (mantiene tu comportamiento original)
     document.addEventListener('DOMContentLoaded', listar);
 
-    // Guardar cambios
     document.getElementById('save').addEventListener('click', async ()=>{
       if(PENDING.size===0) return;
       const cambios = [];
@@ -499,13 +495,13 @@
         await Swal.fire({ icon:'success', title:'Cambios guardados', timer:1400, showConfirmButton:false });
         PENDING.clear();
         $save.disabled = true;
-        await listar(); // recarga y actualiza el contador con loader
+        await listar();
       }catch(e){
         Swal.fire({ icon:'error', title:'No se pudo guardar', text:e.message });
       }
     });
 
-    // Filtrado en vivo con debounce
+    // Debounced live filter
     function debounce(fn, wait=200){
       let t;
       return (...args) => { clearTimeout(t); t = setTimeout(()=>fn(...args), wait); };
@@ -516,7 +512,7 @@
       const filtered = DATA.filter(item => matchesFilter(item, q));
       render(filtered);
       updateSelectedSummary(filtered);
-    }, 180);
+    }, 120);
 
     $filterInput.addEventListener('input', applyFilter);
   </script>
