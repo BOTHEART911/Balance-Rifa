@@ -310,7 +310,9 @@ Quedamos atentos, mil gracias por la colaboración`;
       acts.className = 'actions';
 
       const btnStatus = document.createElement('button');
-      btnStatus.className = 'status-btn ' + statusClass(item.estado);
+      const estadoMostrado = PENDING.has(item.row) ? PENDING.get(item.row) : item.estado;
+      btnStatus.className = 'status-btn ' + statusClass(estadoMostrado);
+      
       btnStatus.addEventListener('click', () => {
         const isPaid = btnStatus.classList.contains('status-paid');
         btnStatus.classList.toggle('status-paid', !isPaid);
