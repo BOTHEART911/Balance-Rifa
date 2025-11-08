@@ -280,11 +280,11 @@
     function buildChargeMessage(item){
       const nombre = firstNameOf(item.nombre || '');
       const numeros = parseNumbersFromCell(item.numeros).join(SEPARATOR);
-      return `Hola ${nombre} ¿Cómo estás?
+      return `Hola *${nombre}* ¿Cómo estás?
 
-Quería recordarte el sorteo de la rifa y el pago de tu(s) número(s): ${numeros}
+Quería recordarte el sorteo de la rifa y el pago de tu(s) número(s): *${numeros}*
 
-Quedamos atentos, mil gracias por la colaboración`;
+Quedamos atentos a cualquier duda, mil gracias por la colaboración`;
     }
 
     function createCard(item){
