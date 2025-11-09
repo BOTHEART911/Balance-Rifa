@@ -118,6 +118,28 @@
       .wa, .charge{ width:38px; height:38px; }
       .wa img, .charge img{ width:26px; height:26px; }
     }
+
+        /* Campo para ingresar N° ganador (inferior) */
+    .winner-wrap{
+      display:flex;
+      justify-content:center;
+      margin:8px 0 4px;
+    }
+    .winner-input{
+      appearance:none;
+      width:160px;
+      max-width:180px;
+      border-radius:14px;
+      background:#fff;
+      border:3px solid #111;
+      padding:8px 12px;
+      font-weight:700;
+      text-align:center;
+      box-shadow:0 6px 12px rgba(0,0,0,.12);
+      outline:none;
+      font-size:.9rem;
+    }
+    .winner-input::placeholder{ color:#777; font-weight:600; }
   </style>
 </head>
 <body>
@@ -137,7 +159,10 @@
       </div>
     </div>
 
-    <div id="list"></div>
+        <div id="list"></div>
+    <div class="winner-wrap">
+      <input id="winnerInput" class="winner-input" type="text" placeholder="N° ganador" aria-label="Ingresar número ganador">
+    </div>
     <div class="save-wrap">
       <button id="save" class="save-btn" disabled>Guardar Cambios</button>
     </div>
@@ -517,6 +542,79 @@ Quedamos atentos a cualquier duda, mil gracias por la colaboración`;
     }, 120);
 
     $filterInput.addEventListener('input', applyFilter);
+
+        // ==== Campo N° ganador (búsqueda y envío WhatsApp) ====
+    const $winnerInput = document.getElementById('winnerInput');
+    let winnerTimer = null;
+    let lastWinnerValue = '';
+
+    function findItemByNumber(num){
+      if(!num) return null;
+      // Recorre TODOS los datos cargados (aunque haya filtro activo)
+      for(const it of DATA){
+        const nums = parseNumbersFromCell(it.numeros);
+        if(nums.includes(num)) return it;
+      }
+      return null;
+    }
+
+    function buildWinnerMessage(firstName, numero){
+      return `🎉 Felicidades *${firstName}* 🥳
+
+Tu número *${numero}* ha sido el ganador del sorteo 💰
+> *Muchas gracias por tu colaboración y participación*
+
+A continuación, te adjuntamos el comprobante del premio 🖼`;
+    }
+
+    $winnerInput.addEventListener('input', () => {
+      if(winnerTimer) clearTimeout(winnerTimer);
+      winnerTimer = setTimeout(() => {
+        const raw = normalizeKeycapDigits($winnerInput.value || '').trim();
+        if(!raw) return;
+        if(raw === lastWinnerValue) return; // evita repetir acción exacta
+        const numero = raw.replace(/\D/g,''); // solo dígitos del input
+        if(!numero) return;
+
+        const item = findItemByNumber(numero);
+        lastWinnerValue = raw;
+
+        if(item){
+          const first = firstNameOf(item.nombre || '');
+          const phoneDigitsVal = String(item.phone || '').replace(/\D/g,'');
+          const full = phoneDigitsVal ? (phoneDigitsVal.startsWith('57') ? phoneDigitsVal : ('57' + phoneDigitsVal.slice(-10))) : '';
+          const msg = buildWinnerMessage(first, numero);
+
+          if(full){
+            // Abre WhatsApp con el mensaje ganador
+            window.open('https://wa.me/' + full + '?text=' + encodeURIComponent(msg), '_blank');
+            Swal.fire({
+              icon:'success',
+              title:'Ganador encontrado',
+              text:`Mensaje preparado para ${first}.`,
+              timer:2200,
+              showConfirmButton:false
+            });
+          }else{
+            Swal.fire({
+              icon:'info',
+              title:'Sin teléfono',
+              text:'El registro ganador no tiene número para WhatsApp.',
+              timer:2200,
+              showConfirmButton:false
+            });
+          }
+        }else{
+          Swal.fire({
+            icon:'info',
+            title:'Número NO jugado',
+            timer:1800,
+            showConfirmButton:false
+          });
+        }
+      }, 1250); // 1.25 segundos
+    });
+    
   </script>
 </body>
 </html>
